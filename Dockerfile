@@ -1,6 +1,12 @@
-FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y python3 python3-pip
+FROM python:3.11-slim
+
 WORKDIR /app
-COPY . /app
-RUN pip3 install crewai langchain langchain-openai
-CMD ["python3", "agent.py"]
+
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["python", "agent.py"]

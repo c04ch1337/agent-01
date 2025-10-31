@@ -1,19 +1,30 @@
-# DESCRIPTIONS: Tiny AI agent that reads a TASK from environment, calls an OpenAI-compatible Chat Completions API, and prints the reply.
+# DESCRIPTIONS: Tiny agent that reads env vars; loads .env when running locally; posts to OpenAI-compatible Chat API.
 
-# DESCRIPTIONS: Imports (os for env, requests for HTTP, sys for clean error output)
+# DESCRIPTIONS: Imports and optional .env loader (no-op in Docker if you pass envs at runtime)
 import os, requests, sys
+try:
+    # DESCRIPTIONS: Load .env from current directory (override=False keeps real env winning in Docker)
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=os.getenv("ENV_FILE", ".env"), override=False)
+except Exception:
+    pass  # DESCRIPTIONS: Safe if python-dotenv isn't installed
 
-# DESCRIPTIONS: Config from environment with safe defaults (works with OpenAI, OpenRouter, or local Ollama if API_BASE points there)
+# DESCRIPTIONS: Config from environment with sensible defaults
 API_BASE = os.getenv("API_BASE", "https://api.openai.com/v1")
 API_KEY  = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
 MODEL    = os.getenv("MODEL", "gpt-4o-mini")
 TASK     = os.getenv("TASK", "Say hello briefly.")
 
-# DESCRIPTIONS: HTTP headers (Authorization only if a key is supplied) and minimal Chat Completions payload
+# DESCRIPTIONS: Fail fast if we need a key (Ollama can be keyless; OpenAI needs one)
+if "openai.com" in API_BASE and not API_KEY:
+    print("[agent error] Missing API_KEY/OPENAI_API_KEY for OpenAI endpoint.", file=sys.stderr)
+    sys.exit(1)
+
+# DESCRIPTIONS: HTTP request to Chat Completions; prints assistant reply or readable error
 headers = {"Content-Type": "application/json"}
 if API_KEY:
     headers["Authorization"] = f"Bearer {API_KEY}"
-body = {
+payload = {
     "model": MODEL,
     "messages": [
         {"role": "system", "content": "You are a helpful general-purpose agent."},
@@ -21,12 +32,11 @@ body = {
     ]
 }
 
-# DESCRIPTIONS: Send request, print assistant message on success, show readable error on failure
 try:
-    resp = requests.post(f"{API_BASE}/chat/completions", headers=headers, json=body, timeout=60)
-    resp.raise_for_status()
-    print(resp.json()["choices"][0]["message"]["content"])
+    r = requests.post(f"{API_BASE}/chat/completions", headers=headers, json=payload, timeout=60)
+    r.raise_for_status()
+    print(r.json()["choices"][0]["message"]["content"])
 except Exception as e:
-    err_text = getattr(getattr(e, "response", None), "text", None) or str(e)
-    print(f"[agent error] {err_text}", file=sys.stderr)
+    err = getattr(getattr(e, "response", None), "text", None) or str(e)
+    print(f"[agent error] {err}", file=sys.stderr)
     sys.exit(1)

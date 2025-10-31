@@ -1,3 +1,2 @@
-crewai
-langchain
-langchain-openai
+requests
+python-dotenv
